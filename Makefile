@@ -89,7 +89,7 @@ install-dev:
 # Deliberately unqueued: provisioning is I/O bound, so it doesn't need one of the
 # machine-wide slots the CPU-bound gates below share.
 bootstrap:
-	$(UV) sync --inexact --frozen --extra proxy --group proxy-dev --group e2e-dev
+	$(UV) sync --inexact --frozen --all-groups --all-extras
 	$(UV_RUN) python scripts/prisma_generate_if_needed.py
 	cd ui/litellm-dashboard && ../../scripts/with_dashboard_node.sh npm install --no-audit --no-fund
 	@main_root=$$(git worktree list --porcelain | head -1 | sed 's/^worktree //'); \
