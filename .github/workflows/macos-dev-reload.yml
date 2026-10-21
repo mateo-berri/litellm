@@ -1,0 +1,42 @@
+name: macos-dev-reload
+
+on:
+  push:
+    branches:
+      - litellm_macos_dev_reload_probe
+
+permissions:
+  contents: read
+
+jobs:
+  reload:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - uses: ./.github/actions/setup-uv-with-retries
+        with:
+          version: "0.10.9"
+
+      - name: Install dependencies without the Rust extension
+        run: |
+          uv sync --frozen --group dev --group proxy-dev --extra proxy --extra proxy-runtime --no-install-project
+          purelib="$(.venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+          echo "$GITHUB_WORKSPACE" > "$purelib/litellm_src.pth"
+          sw_vers
+          .venv/bin/python -I -c 'import sys, litellm, uvicorn; print(sys.platform, sys.version.split()[0], "uvicorn", uvicorn.__version__, litellm.__file__)'
+
+      - name: Reload unit tests
+        run: .venv/bin/python -m pytest tests/unit/proxy/test_dev_reload.py -v -p no:cacheprovider -n 0
+
+      - name: CLI boot, two saves, a killed pool parent, and Ctrl-C
+        run: .venv/bin/python .github/macos_reload_probe.py "$GITHUB_WORKSPACE" "$RUNNER_TEMP/app"
