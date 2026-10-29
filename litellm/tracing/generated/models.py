@@ -198,7 +198,7 @@ class TraceQueryRelationship(LiteLLMBaseModel):
     right: str
 
 
-TraceTableName: TypeAlias = Literal["otel_traces", "agent_traces_by_key", "spend_logs"]
+TraceTableName: TypeAlias = Literal["otel_traces", "agent_traces_by_key", "spend_logs", "llm_traces"]
 
 
 class TraceQueryAttributes(LiteLLMBaseModel):
