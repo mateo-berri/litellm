@@ -454,7 +454,7 @@ async def test_async_invoke_status_signs_off_the_event_loop(monkeypatch):
 )
 async def test_router_keeps_the_invocation_arn_next_to_the_deployment_id(model):
     from litellm import Router
-    from litellm.router_utils.add_retry_fallback_headers import get_hidden_params_dict
+    from litellm.litellm_core_utils.add_retry_fallback_headers import get_hidden_params_dict
 
     router = Router(
         model_list=[
@@ -486,8 +486,8 @@ async def test_router_keeps_the_invocation_arn_next_to_the_deployment_id(model):
 
 
 def test_generic_async_invoke_response_keeps_the_invocation_arn_in_its_dumped_hidden_params():
+    from litellm.litellm_core_utils.add_retry_fallback_headers import get_hidden_params_dict
     from litellm.llms.bedrock.embed.embedding import BedrockEmbedding
-    from litellm.router_utils.add_retry_fallback_headers import get_hidden_params_dict
 
     response = BedrockEmbedding()._transform_response(
         response_list=[async_invoke_response],

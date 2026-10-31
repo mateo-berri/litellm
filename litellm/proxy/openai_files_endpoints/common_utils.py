@@ -1,4 +1,5 @@
 import base64
+import itertools
 import logging
 import mimetypes
 import re
@@ -22,12 +23,12 @@ from typing_extensions import NotRequired, ReadOnly, TypedDict
 
 from litellm.batches.batch_utils import batch_cost_is_final
 from litellm.constants import MAX_FILE_LIST_LIMIT
+from litellm.litellm_core_utils.add_retry_fallback_headers import get_hidden_params_dict
 from litellm.proxy._types import ProxyException
 from litellm.repositories.managed_file_repository import ManagedFileRepository
 from litellm.repositories.table_repositories import (
     ManagedObjectRepository,
 )
-from litellm.router_utils.add_retry_fallback_headers import get_hidden_params_dict
 from litellm.types.llms.openai import OpenAIFilesPurpose
 from litellm.types.utils import EmbeddingResponse, SpecialEnums
 
@@ -555,7 +556,8 @@ def get_team_provider_credentials(
        listings on the team's own provider account/key instead of a shared
        global one.
     2. Fallback: any deployment the caller is granted access to for this
-       provider, expanding wildcard routes and the all-proxy-models sentinel.
+       provider, matching wildcard grants against deployed model names without
+       listing any provider's catalog, and expanding the all-proxy-models sentinel.
        Skipped when ``include_accessible_deployments`` is False.
 
     Credential lookup is scoped to both the team's allowlist and the key's own
@@ -573,6 +575,7 @@ def get_team_provider_credentials(
         return None
 
     from litellm.proxy._types import SpecialModelNames
+    from litellm.proxy.auth.auth_checks import is_model_allowed_by_pattern
     from litellm.proxy.auth.model_checks import get_complete_model_list, get_key_models
 
     team_id: Final = user_api_key_dict.team_id
@@ -659,28 +662,36 @@ def get_team_provider_credentials(
     grants_all_models: Final = SpecialModelNames.all_proxy_models.value in team_models
     effective_team_models: Final = [] if grants_all_models else team_models
 
-    models_to_try: Final = list(
-        dict.fromkeys(
-            get_complete_model_list(
-                key_models=list(key_model_allowlist),
-                team_models=effective_team_models,
-                proxy_model_list=proxy_model_list,
-                user_model=None,
-                infer_model_from_keys=False,
-                return_wildcard_routes=True,
-                llm_router=llm_router,
-                model_access_groups=model_access_groups,
-                include_model_access_groups=True,
-                team_id=team_id,
-            )
+    granted_models: Final = get_complete_model_list(
+        key_models=list(key_model_allowlist),
+        team_models=effective_team_models,
+        proxy_model_list=proxy_model_list,
+        user_model=None,
+        infer_model_from_keys=False,
+        return_wildcard_routes=True,
+        llm_router=llm_router,
+        model_access_groups=model_access_groups,
+        include_model_access_groups=True,
+        team_id=team_id,
+        expand_wildcard_routes=False,
+    )
+    deployments_granted_by_wildcard: Final = (
+        model_name
+        for model_name in proxy_model_list
+        if any(
+            is_model_allowed_by_pattern(model=model_name, allowed_model_pattern=granted) for granted in granted_models
         )
     )
-    for model_name in models_to_try:
-        credentials = _provider_credentials(model_name)
-        if credentials is not None:
-            return credentials
-
-    return None
+    return next(
+        (
+            credentials
+            for credentials in map(
+                _provider_credentials, dict.fromkeys(itertools.chain(granted_models, deployments_granted_by_wildcard))
+            )
+            if credentials is not None
+        ),
+        None,
+    )
 
 
 HTTP_HEADER_VALUE: Final = re.compile(r"[\x21-\x7e]+(?:[ \t]+[\x21-\x7e]+)*")
