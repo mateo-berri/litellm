@@ -116,12 +116,20 @@ def test_embeddings_pipeline_error(client, auth_as, embedding_pipeline_raises, p
 
 
 def test_async_invoke_embedding_response_carries_a_pollable_batch_id(client, auth_as, monkeypatch):
+    from litellm import Router
     from litellm.proxy.openai_files_endpoints.common_utils import decode_model_from_file_id, get_original_file_id
     from litellm.types.utils import Embedding, EmbeddingResponse
 
     invocation_arn = "arn:aws:bedrock:us-east-1:123456789012:async-invoke/n0v4j0b1d"
-    router = MagicMock()
-    router.model_names = ["nova-async-embeddings"]
+    router = Router(
+        model_list=[
+            {
+                "model_name": "nova-async-embeddings",
+                "litellm_params": {"model": "bedrock/async_invoke/amazon.nova-2-multimodal-embeddings-v1:0"},
+                "model_info": {"id": "deployment-1"},
+            }
+        ]
+    )
     monkeypatch.setattr(proxy_server, "llm_router", router)
     monkeypatch.setattr(proxy_server, "proxy_logging_obj", MagicMock(post_call_failure_hook=AsyncMock()))
 
@@ -143,4 +151,7 @@ def test_async_invoke_embedding_response_carries_a_pollable_batch_id(client, aut
 
     assert response.status_code == 200
     batch_id = response.json()["batch_id"]
-    assert (decode_model_from_file_id(batch_id), get_original_file_id(batch_id)) == ("deployment-1", invocation_arn)
+    assert (decode_model_from_file_id(batch_id), get_original_file_id(batch_id)) == (
+        "nova-async-embeddings",
+        invocation_arn,
+    )

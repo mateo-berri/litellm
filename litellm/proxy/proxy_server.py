@@ -13741,7 +13741,7 @@ async def embeddings(
             version=version,
         )
 
-        return with_async_invoke_batch_id(response)
+        return with_async_invoke_batch_id(response, llm_router)
     except Exception as e:
         raise await base_llm_response_processor.handle_llm_api_exception(
             e=e,

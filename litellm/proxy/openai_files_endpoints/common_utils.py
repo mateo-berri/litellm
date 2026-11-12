@@ -381,16 +381,21 @@ def encode_batch_response_ids(response, model: str) -> None:
             )
 
 
-def with_async_invoke_batch_id(response: object) -> object:
-    if not isinstance(response, EmbeddingResponse):
+def with_async_invoke_batch_id(response: object, llm_router: Optional["Router"]) -> object:
+    if not isinstance(response, EmbeddingResponse) or llm_router is None:
         return response
     hidden_params: Final = get_hidden_params_dict(response)
     invocation_arn: Final = hidden_params.get("_invocation_arn")
     model_id: Final = hidden_params.get("model_id")
     if not (isinstance(invocation_arn, str) and invocation_arn and isinstance(model_id, str) and model_id):
         return response
+    deployment: Final = llm_router.registry().credentials(model_id, form="deployment")
+    if deployment is None:
+        return response
     return response.model_copy(
-        update={"batch_id": encode_file_id_with_model(file_id=invocation_arn, model=model_id, id_type="batch")}
+        update={
+            "batch_id": encode_file_id_with_model(file_id=invocation_arn, model=deployment.model_name, id_type="batch")
+        }
     )
 
 

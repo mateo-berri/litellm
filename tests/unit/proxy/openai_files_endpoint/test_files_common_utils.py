@@ -12,10 +12,11 @@ from litellm_enterprise.proxy.hooks.managed_files import _PROXY_LiteLLMManagedFi
 import litellm
 from litellm import Router
 from litellm.caching.caching import DualCache
-from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 from litellm.proxy.openai_files_endpoints.common_utils import (
     apply_team_provider_credentials,
     apply_unified_file_ids,
+    authorize_model_for_key,
     decode_model_from_file_id,
     get_credentials_for_model,
     get_original_file_id,
@@ -851,16 +852,34 @@ def test_a_team_keeps_its_first_config_file_openai_deployment_over_older_db_ones
 
 
 _ASYNC_INVOKE_ARN: Final = "arn:aws:bedrock:us-east-1:123456789012:async-invoke/n0v4j0b1d"
+_ASYNC_INVOKE_MODEL: Final = "nova-async-embeddings"
+
+
+def _async_invoke_router() -> Router:
+    return Router(
+        model_list=[
+            {
+                "model_name": _ASYNC_INVOKE_MODEL,
+                "litellm_params": {
+                    "model": "bedrock/async_invoke/amazon.nova-2-multimodal-embeddings-v1:0",
+                    "aws_region_name": "us-east-1",
+                },
+                "model_info": {"id": "deployment-1"},
+            },
+            {"model_name": "other-embeddings", "litellm_params": {"model": "openai/text-embedding-3-small"}},
+        ]
+    )
 
 
 def _async_invoke_embedding(hidden_params: dict[str, object] | HiddenParams) -> EmbeddingResponse:
     return EmbeddingResponse(
-        model="nova-async-embeddings",
+        model=_ASYNC_INVOKE_MODEL,
         data=[Embedding(embedding=[], index=0, object="embedding")],
         hidden_params=hidden_params,
     )
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "hidden_params",
     [
@@ -868,18 +887,26 @@ def _async_invoke_embedding(hidden_params: dict[str, object] | HiddenParams) -> 
         HiddenParams.model_validate({"_invocation_arn": _ASYNC_INVOKE_ARN, "model_id": "deployment-1"}),
     ],
 )
-def test_async_invoke_embedding_gets_a_batch_id_that_routes_back_to_its_deployment(
+async def test_a_key_scoped_to_the_public_model_may_poll_its_async_invoke_batch_id(
     hidden_params: dict[str, object] | HiddenParams,
 ) -> None:
-    tagged: Final = with_async_invoke_batch_id(_async_invoke_embedding(hidden_params))
+    router: Final = _async_invoke_router()
+
+    tagged: Final = with_async_invoke_batch_id(_async_invoke_embedding(hidden_params), router)
 
     assert isinstance(tagged, EmbeddingResponse)
     batch_id: Final = tagged.model_dump()["batch_id"]
-    assert (batch_id.startswith("batch_"), decode_model_from_file_id(batch_id), get_original_file_id(batch_id)) == (
-        True,
-        "deployment-1",
-        _ASYNC_INVOKE_ARN,
+    model: Final = decode_model_from_file_id(batch_id)
+    assert model is not None
+    assert (batch_id.startswith("batch_"), get_original_file_id(batch_id)) == (True, _ASYNC_INVOKE_ARN)
+    await authorize_model_for_key(
+        model, router, UserAPIKeyAuth(api_key="sk-scoped", models=[_ASYNC_INVOKE_MODEL])
     )
+    assert get_credentials_for_model(router, model)["aws_region_name"] == "us-east-1"
+    with pytest.raises(ProxyException):
+        await authorize_model_for_key(
+            model, router, UserAPIKeyAuth(api_key="sk-other", models=["other-embeddings"])
+        )
 
 
 @pytest.mark.parametrize(
@@ -889,14 +916,15 @@ def test_async_invoke_embedding_gets_a_batch_id_that_routes_back_to_its_deployme
         {"_invocation_arn": "", "model_id": "deployment-1"},
         {"_invocation_arn": _ASYNC_INVOKE_ARN},
         {"_invocation_arn": _ASYNC_INVOKE_ARN, "model_id": None},
+        {"_invocation_arn": _ASYNC_INVOKE_ARN, "model_id": "deployment-the-router-does-not-have"},
     ],
 )
-def test_embedding_without_an_invocation_arn_and_deployment_id_gets_no_batch_id(
+def test_embedding_without_an_invocation_arn_and_a_known_deployment_gets_no_batch_id(
     hidden_params: dict[str, object],
 ) -> None:
     response: Final = _async_invoke_embedding(hidden_params)
 
-    assert with_async_invoke_batch_id(response) is response
+    assert with_async_invoke_batch_id(response, _async_invoke_router()) is response
     assert "batch_id" not in response.model_dump()
 
 
