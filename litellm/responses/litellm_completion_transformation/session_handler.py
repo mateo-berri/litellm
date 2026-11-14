@@ -483,8 +483,9 @@ class ResponsesSessionHandler:
         # Add Input messages for this Spend Log
         ############################################################
         if proxy_server_request_dict:
-            _response_input_param: Final = proxy_server_request_dict.get("input") or proxy_server_request_dict.get(
-                "messages"
+            stored_request_input: Final = proxy_server_request_dict.get("input")
+            _response_input_param: Final = (
+                proxy_server_request_dict.get("messages") if stored_request_input is None else stored_request_input
             )
             if isinstance(_response_input_param, (str, list)):
                 response_input_param = _response_input_param
@@ -497,7 +498,7 @@ class ResponsesSessionHandler:
         output_messages: Final = ResponsesSessionHandler._stored_output_messages(
             _stored_response(spend_log), stored_tools, item_cache_control, tool_call_provider_fields
         )
-        if response_input_param:
+        if response_input_param is not None:
             stored_input: Final = LiteLLMCompletionResponsesConfig.transform_responses_api_input_to_messages(
                 input=bridge_client_tool_search(response_input_param, None).input,
                 responses_api_request={"tools": stored_tools} if stored_tools is not None else {},
