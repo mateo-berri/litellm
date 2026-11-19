@@ -1,4 +1,4 @@
-"""`/v1/chat/completions` at 2 rps: `gpt-6-luna` is served by the OpenAI mock's chat completions
+"""`/v1/chat/completions` at two requests per second: `gpt-6-luna` is served by the OpenAI mock's chat completions
 route, `gpt-6-luna-responses` (`openai/responses/gpt-6-luna`) is bridged to its Responses route."""
 
 from __future__ import annotations
