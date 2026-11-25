@@ -2135,8 +2135,14 @@ class AnthropicConfig(AnthropicModelInfo, BaseConfig):
             text_tokens=raw_input_tokens,
         )
         # Always populate completion_token_details, not just when there's reasoning_content
+        output_tokens_details = _usage.get("output_tokens_details")
+        reported_thinking_tokens = (
+            output_tokens_details.get("thinking_tokens") if isinstance(output_tokens_details, dict) else None
+        )
         estimated_reasoning_tokens = (
-            token_counter(text=reasoning_content, count_response_tokens=True) if reasoning_content else 0
+            reported_thinking_tokens
+            if isinstance(reported_thinking_tokens, int)
+            else (token_counter(text=reasoning_content, count_response_tokens=True) if reasoning_content else 0)
         )
         reasoning_tokens = min(estimated_reasoning_tokens, completion_tokens)
         completion_token_details = CompletionTokensDetailsWrapper(

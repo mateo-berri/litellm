@@ -118,6 +118,24 @@ def test_calculate_usage_clamps_text_tokens_when_reasoning_estimate_exceeds_outp
     assert usage.completion_tokens_details.text_tokens == 0
 
 
+def test_calculate_usage_uses_output_tokens_details_thinking_tokens():
+    config = AnthropicConfig()
+
+    usage = config.calculate_usage(
+        usage_object={
+            "input_tokens": 10,
+            "output_tokens": 500,
+            "output_tokens_details": {"thinking_tokens": 420},
+        },
+        reasoning_content="short summary",
+    )
+
+    assert usage.completion_tokens == 500
+    assert usage.completion_tokens_details is not None
+    assert usage.completion_tokens_details.reasoning_tokens == 420
+    assert usage.completion_tokens_details.text_tokens == 80
+
+
 def test_calculate_usage_handles_mocked_output_tokens_with_reasoning_content():
     config = AnthropicConfig()
 
